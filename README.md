@@ -1,8 +1,13 @@
 # No Metrics Are Perfect: Adversarial REward Learning for Visual Storytelling
 
-In this paper, we not only introduce a novel adversarial reward learning algorithm to generate more human-like stories given image sequences, but also empirically analyze the limitations of the automatic metrics for story evaluation. 
+This repo is the implementation of our paper "No Metrics Are Perfect: Adversarial Reward Learning for Visual Storytelling", which also provides a codebase for the task of visual storytelling.
 
+In the AREL paper, we not only introduce a novel adversarial reward learning algorithm to generate more human-like stories given image sequences, but also empirically analyze the limitations of the automatic metrics for story evaluation. 
 For more details, please check the latest version of the paper: [https://arxiv.org/abs/1804.09160](https://arxiv.org/abs/1804.09160).
+
+<p align="demo">
+<img src="demo.png">
+</p>
 
 ## Prerequisites 
 - Python 2.7
@@ -15,7 +20,7 @@ For more details, please check the latest version of the paper: [https://arxiv.o
 Clone this github repository recursively: 
 
 ```
-git clone --recursive https://github.com/littlekobe/Visual-Storytelling.git ./
+git clone --recursive https://github.com/eric-xw/AREL.git ./
 ```
 
 Download the preprocessed ResNet-152 features [here](http://nlp.cs.ucsb.edu/data/VIST_resnet_features.zip) and unzip it into `DATADIR/resnet_features`.
@@ -52,18 +57,18 @@ And then open your browser and go to `[IP address]:6006` (the default port for t
 To test the model's performance, run
 
 ```
-python train.py --option test --start_from_model data/save/XE/model.pth
+python train.py --option test --beam_size 3 --start_from_model data/save/XE/model.pth
 ```
 
 or 
 
 ```
-python train_AREL.py --option test --start_from_model data/save/AREL/model.pth
+python train_AREL.py --option test --beam_size 3 --start_from_model data/save/AREL/model.pth
 ```
 
 ## If you find this code useful, please cite the paper
 ```
-@InProceedings{xinwang-wenhuchen-ACL-2018,
+@InProceedings{xwang-2018-AREL,
   author = 	"Wang, Xin and Chen, Wenhu and Wang, Yuan-Fang and Wang, William Yang",
   title = 	"No Metrics Are Perfect: Adversarial Reward Learning for Visual Storytelling",
   booktitle = 	"Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
@@ -76,4 +81,4 @@ python train_AREL.py --option test --start_from_model data/save/AREL/model.pth
 ```
 
 ## Acknowledgement
-* [VIST evaluation code by Licheng Yu](https://github.com/lichengunc/vist_eval)
+* [VIST evaluation code](https://github.com/lichengunc/vist_eval)
