@@ -1,3 +1,10 @@
+nohup_out/
+database/
+data/
+save/
+
+*.txt
+*.json
 *.pyc
 test.ipynb
 .ipynb_checkpoints
