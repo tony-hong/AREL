@@ -10,12 +10,14 @@ import math
 import logging
 import time
 import numpy as np
-from .model_utils import AttentionLayer, VisualEncoder, _smallest
+from .model_utils import AttentionLayer, VisualEncoder, _smallest, AttenVisualEncoder
 
 
 class BaseModel(nn.Module):
     def __init__(self, opt):
         super(BaseModel, self).__init__()
+        self.opt = opt
+        
         self.vocab_size = opt.vocab_size
         self.story_size = opt.story_size
         self.word_embed_dim = opt.word_embed_dim
@@ -27,9 +29,15 @@ class BaseModel(nn.Module):
         self.feat_size = opt.feat_size
         self.decoder_input_dim = self.word_embed_dim + self.word_embed_dim
         self.ss_prob = 0.0  # Schedule sampling probability
-
+        self.use_det = opt.use_det
+        
+        # change visual encoder here
         # Visual Encoder
-        self.encoder = VisualEncoder(opt)
+        print ('BaseModel: opt.use_det', opt.use_det)
+        if self.use_det:
+            self.encoder = AttenVisualEncoder(opt)
+        else:
+            self.encoder = VisualEncoder(opt)
 
         # Decoder LSTM
         self.project_d = nn.Linear(self.decoder_input_dim, self.word_embed_dim)
@@ -115,7 +123,11 @@ class BaseModel(nn.Module):
         """
         # encode the visual features
         out_e, _ = self.encoder(features)
-
+        if self.use_det:
+            feature_fc, feature_det = features
+        else:
+            feature_fc = features
+        
         # reshape the inputs, making the sentence generation separately
         out_e = out_e.view(-1, out_e.size(2))
         caption = caption.view(-1, caption.size(2))
@@ -125,7 +137,7 @@ class BaseModel(nn.Module):
 
         # initialize decoder's state
         # state_d = self.init_hidden(batch_size, bi=False, dim=self.hidden_dim)
-        state_d = self.init_hidden_with_feature(features)
+        state_d = self.init_hidden_with_feature(feature_fc)
 
         last_word = Variable(torch.FloatTensor(batch_size).long().zero_()).cuda()
         outputs = []
@@ -161,7 +173,11 @@ class BaseModel(nn.Module):
     def sample(self, features, sample_max, rl_training=False, pad=False):
         # encode the visual features
         out_e, _ = self.encoder(features)
-
+        if self.use_det:
+            feature_fc, feature_det = features
+        else:
+            feature_fc = features
+            
         # reshape the inputs, making the sentence generation separately
         out_e = out_e.view(-1, out_e.size(2))
 
@@ -170,7 +186,7 @@ class BaseModel(nn.Module):
 
         # initialize decoder's state
         # state_d = self.init_hidden(batch_size, bi=False, dim=self.hidden_dim)
-        state_d = self.init_hidden_with_feature(features)
+        state_d = self.init_hidden_with_feature(feature_fc)
 
         seq = []
         seq_log_probs = []
@@ -232,11 +248,20 @@ class BaseModel(nn.Module):
     def topK(self, features, beam_size=5):
         assert beam_size <= self.vocab_size and beam_size > 0
         if beam_size == 1:  # if beam_size is 1, then do greedy decoding, otherwise use beam search
-            return self.sample(features, sample_max=True, rl_training=False)
+            if self.use_det:
+                return self.sample(features, sample_max=True, rl_training=False)
+            else:
+                return self.sample(features, sample_max=True, rl_training=False)
 
         # encode the visual features
         out_e, _ = self.encoder(features)
 
+        # encode the visual features
+        if self.use_det:
+            feature_fc, feature_det = features
+        else:
+            feature_fc = features
+            
         # reshape the inputs, making the sentence generation separately
         out_e = out_e.view(-1, out_e.size(2))
 
@@ -244,7 +269,7 @@ class BaseModel(nn.Module):
         batch_size = out_e.size(0)
 
         # initialize decoder's state
-        state_d = self.init_hidden_with_feature(features)
+        state_d = self.init_hidden_with_feature(feature_fc)
 
         topK = []
         for k in range(batch_size):
@@ -299,6 +324,11 @@ class BaseModel(nn.Module):
         # encode the visual features
         out_e, _ = self.encoder(features)
 
+        if self.use_det:
+            feature_fc, feature_det = features
+        else:
+            feature_fc = features
+            
         # reshape the inputs, making the sentence generation separately
         out_e = out_e.view(-1, out_e.size(2))
 
@@ -307,7 +337,7 @@ class BaseModel(nn.Module):
 
         # initialize decoder's state
         # state_d = self.init_hidden(batch_size, bi=False, dim=self.hidden_dim)
-        state_d = self.init_hidden_with_feature(features)
+        state_d = self.init_hidden_with_feature(feature_fc)
 
         seq = torch.LongTensor(self.seq_length, batch_size).zero_()
         seq_log_probs = torch.FloatTensor(self.seq_length, batch_size)
@@ -319,6 +349,7 @@ class BaseModel(nn.Module):
 
             last_word = Variable(torch.FloatTensor(beam_size).long().zero_().cuda())  # <BOS>
             log_probs, state_d_k = self.decode(out_e_k, last_word, state_d_k, True)
+            
             log_probs[:, 1] = log_probs[:, 1] - 1000  # never produce <UNK> token
             neg_log_probs = -log_probs
 
