@@ -10,12 +10,11 @@ import threading
 
 # Assumes meteor-1.5.jar is in the same directory as meteor.py.  Change as needed.
 METEOR_JAR = 'meteor-1.5.jar'
-# print METEOR_JAR
+print (METEOR_JAR)
 
 class Meteor:
 
     def __init__(self):
-
         # Here is MSR VIST group's measurement
         self.meteor_cmd = ['java', '-jar', '-Xmx2G', METEOR_JAR, '-', '-', '-stdio', '-t', 'hter']
         # self.meteor_cmd = ['java', '-jar', '-Xmx2G', METEOR_JAR, \
