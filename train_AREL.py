@@ -142,8 +142,8 @@ def train(opt):
 
                 if logger.iteration % 5 == 0:
                     logging.info("pos reward {} neg reward {}".format(avg_pos_score.data[0], avg_neg_score.data[0]))
-                    print("PREDICTION: ", utils.decode_story(dataset.get_vocab(), seq[:1].data)[0])
-                    print("GROUND TRUTH: ", utils.decode_story(dataset.get_vocab(), target[:1].data)[0])
+                    # print("PREDICTION: ", utils.decode_story(dataset.get_vocab(), seq[:1].data)[0])
+                    # print("GROUND TRUTH: ", utils.decode_story(dataset.get_vocab(), target[:1].data)[0])
             else:
                 rewards = Variable(gen_score.data - 0.001 * normed_seq_log_probs.data)
                 #with open("/tmp/reward.txt", "a") as f:
@@ -208,6 +208,23 @@ def train(opt):
             flag.inc()
 
 
+def val(opt):
+    logger = Logger(opt)
+    dataset = VISTDataset(opt)
+    opt.vocab_size = dataset.get_vocab_size()
+    opt.seq_length = dataset.get_story_length()
+    
+    dataset.val()
+    test_loader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.workers)
+    evaluator = Evaluator(opt, 'val')
+    model = models.setup(opt)
+    model.cuda()
+    
+    crit = criterion.LanguageModelCriterion()
+    #predictions, metrics = evaluator.test_story(model, dataset, test_loader, opt)
+    val_loss, predictions, metrics = evaluator.eval_story(model, crit, dataset, test_loader, opt)
+
+
 def test(opt):
     logger = Logger(opt)
     dataset = VISTDataset(opt)
@@ -219,6 +236,7 @@ def test(opt):
     evaluator = Evaluator(opt, 'test')
     model = models.setup(opt)
     model.cuda()
+    
     predictions, metrics = evaluator.test_story(model, dataset, test_loader, opt)
 
 
@@ -228,6 +246,9 @@ if __name__ == "__main__":
     if opt.option == 'train':
         print('Begin training:')
         train(opt)
+    elif opt.option == 'val':
+        print('Begin validating:')
+        val(opt)
     else:
         print('Begin testing:')
         test(opt)
