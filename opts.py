@@ -10,12 +10,13 @@ def parse_opt():
     parser.add_argument('--id', type=str, default='default', help='an id identifying this run/job')
 
     # Data input settings
-    parser.add_argument('--data_dir', type=str, default='/mnt/sshd/xwang/VIST')
+    parser.add_argument('--data_dir', type=str, default='database')
     # parser.add_argument('--data_dir', type=str, default='../datasets/VIST')
-    parser.add_argument('--desc_h5', type=str, default='VIST/description.h5')
-    parser.add_argument('--story_h5', type=str, default='VIST/story.h5')
-    parser.add_argument('--full_story_h5', type=str, default='VIST/full_story.h5')
-    parser.add_argument('--story_line_json', type=str, default='VIST/story_line.json')
+    parser.add_argument('--desc_h5', type=str, default='database/VIST/description.h5')
+    parser.add_argument('--story_h5', type=str, default='database/VIST/story.h5')
+    parser.add_argument('--full_story_h5', type=str, default='database/VIST/full_story.h5')
+    parser.add_argument('--story_line_json', type=str, default='database/VIST/story_line.json')
+    parser.add_argument('--story_filter_json', type=str, default='')
     parser.add_argument('--resume_from', type=str, default=None,
                         help="""continue training from saved model at this path. Path must contain files saved by previous training process:
                         'infos.pkl'         : configuration;
@@ -32,29 +33,41 @@ def parse_opt():
     parser.add_argument('--num_layers', type=int, default=1, help='number of layers in the RNN')
     parser.add_argument('--word_embed_dim', type=int, default=512,
                         help='the encoding size of each token in the vocabulary, and the image.')
-    parser.add_argument('--feat_size', type=int, default=2048, help='2048 for resnet, 4096 for vgg')
-    parser.add_argument('--conv_feat_size', type=int, default=7 * 7 * 2048, help='2048 for resnet, 4096 for vgg')
+    parser.add_argument('--feat_size', type=int, default=4096, help='2048 for resnet, 4096 for vgg')
+    parser.add_argument('--conv_feat_size', type=int, default=7 * 7 * 4096, help='2048 for resnet, 4096 for vgg')
+    parser.add_argument('--det_feat_size', type=int, default=512, help='need to set')
+    
     parser.add_argument('--use_conv', type=bool, default=False)
+    parser.add_argument('--use_det', type=bool, default=False)
+    parser.add_argument('--use_self', type=bool, default=False)
+    
+    parser.add_argument('--use_IN_feat', type=bool, default=False, help='also use object classification ImageNet features, need to set feat_size to 4096')
+    parser.add_argument('--use_prd_feat', type=bool, default=False, help='also use PRD prediction features, need to set feat_size to 4096')
+    parser.add_argument('--use_graph_emb', type=bool, default=False, help='also use graph embedding features, need to set feat_size to  ')
+    parser.add_argument('--graphFeat_ver', type=str, default='graphEmb_4096')
+    parser.add_argument('--attenType', type=str, default='additive',
+                        help="additive | simple")
+    
     parser.add_argument('--story_size', type=int, default=5,
                         help='number of images/sentences appearing in each story')
     parser.add_argument('--with_position', type=bool, default=False,
                         help='whether to use position embedding for the image feature')
-
+    
     # Optimization: General
-    parser.add_argument('--max_epochs', type=int, default=100,
+    parser.add_argument('--max_epochs', type=int, default=50,
                         help='number of epochs')
     parser.add_argument('--shuffle', type=bool, default=True,
                         help='set to True to have the data reshuffled at every epoch during training ')
     parser.add_argument('--batch_size', type=int, default=64, help='minibatch size')
-    parser.add_argument('--workers', type=int, default=8,
+    parser.add_argument('--workers', type=int, default=1,
                         help='number of workers to load data')
     parser.add_argument('--grad_clip', type=float, default=10,
                         help='clip gradients at this value')
     parser.add_argument('--visual_dropout', type=float, default=0.2,
-                        help='strength of dropout in the Language Model RNN')
+                        help='strength of dropout in the visual feature encoder')
     parser.add_argument('--dropout', type=float, default=0.5,
                         help='strength of dropout in the Language Model RNN')
-    parser.add_argument('--beam_size', type=int, default=1,
+    parser.add_argument('--beam_size', type=int, default=3,
                         help='indicates number of beams in beam search. This is only used in the evaluation mode')
 
     # Optimization: for the Language Model
@@ -98,13 +111,13 @@ def parse_opt():
                         help='Maximum scheduled sampling prob.')
 
     # Evaluation/Checkpointing
-    parser.add_argument('--metric', type=str, default='METEOR',
+    parser.add_argument('--metric', type=str, default='Bleu_4',
                         help="XE | CIDEr | ROUGE_L | METEOR | Bleu_4 | Bleu_3")
     parser.add_argument('--save_checkpoint_every', type=int, default=1000,
                         help='how often to save a model checkpoint (in iterations)')
-    parser.add_argument('--checkpoint_path', type=str, default='data/save',
+    parser.add_argument('--checkpoint_path', type=str, default='save',
                         help='directory to store checkpointed models')
-    parser.add_argument('--losses_log_every', type=int, default=10,
+    parser.add_argument('--losses_log_every', type=int, default=200,
                         help='How often do we snapshot losses, for inclusion in the progress dump? (0 = disable)')
     parser.add_argument('--load_best_score', type=bool, default=True,
                         help='whether to load previous best score when resuming training.')
