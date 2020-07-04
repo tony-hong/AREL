@@ -13,6 +13,7 @@ import os
 import time
 import sys
 import logging
+from tqdm import tqdm
 
 import opts
 from dataset import VISTDataset
@@ -97,9 +98,12 @@ def train(opt):
 
     # set up optimizer
     optimizer = setup_optimizer(opt, model)
-
+    
     dataset.train()
     model.train()
+    
+    print (model)
+    
     ############################## training ##################################
     for epoch in range(logger.epoch_start, opt.max_epochs):
         # Assign the scheduled sampling prob
@@ -108,20 +112,27 @@ def train(opt):
             opt.ss_prob = min(opt.scheduled_sampling_increase_prob *
                               frac, opt.scheduled_sampling_max_prob)
             model.ss_prob = opt.ss_prob
-
-        for iter, batch in enumerate(train_loader):
+            
+        for iter, batch in enumerate(tqdm(train_loader)):
             start = time.time()
             logger.iteration += 1
             torch.cuda.synchronize()
 
             feature_fc = Variable(batch['feature_fc']).cuda()
+            
+            feature_det = Variable(batch['feature_det']).cuda() if opt.use_det else None
+            
             target = Variable(batch['split_story']).cuda()
             index = batch['index']
 
             optimizer.zero_grad()
 
             # cross entropy loss
-            output = model(feature_fc, target)
+            if opt.use_det:
+                output = model((feature_fc, feature_det), target)
+            else:
+                output = model(feature_fc, target)
+                
             loss = crit(output, target)
 
             if opt.start_rl >= 0 and epoch >= opt.start_rl:  # reinforcement learning
@@ -132,16 +143,20 @@ def train(opt):
                 logging.info("average {} score: {}".format(opt.reward_type, avg_score))
 
             loss.backward()
+            #print (loss)
+            
             train_loss = loss.data[0]
 
             nn.utils.clip_grad_norm(model.parameters(), opt.grad_clip, norm_type=2)
             optimizer.step()
             torch.cuda.synchronize()
 
-            logging.info("Epoch {} - Iter {} / {}, loss = {:.5f}, time used = {:.3f}s".format(epoch, iter,
-                                                                                              len(train_loader),
-                                                                                              train_loss,
-                                                                                              time.time() - start))
+            if iter % opt.losses_log_every == 0: 
+                logging.info("Epoch {} - Iter {} / {}, loss = {:.5f}, time used = {:.3f}s".format(epoch, iter,
+                                                                                                  len(train_loader),
+                                                                                                  train_loss,
+                                                                                                  time.time() - start))
+            
             # Write the training loss summary
             if logger.iteration % opt.losses_log_every == 0:
                 logger.log_training(epoch, iter, train_loss, opt.learning_rate, model.ss_prob)
@@ -170,26 +185,71 @@ def train(opt):
                     bad_valid = 0
 
 
+def val(opt):
+    logger = Logger(opt)
+    dataset = VISTDataset(opt)
+    opt.vocab_size = dataset.get_vocab_size()
+    opt.seq_length = dataset.get_story_length()
+    
+    dataset.val()
+    test_loader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.workers)
+    evaluator = Evaluator(opt, 'val')
+    model = models.setup(opt)
+    model.cuda()
+    
+    crit = criterion.LanguageModelCriterion()
+    #predictions, metrics = evaluator.test_story(model, dataset, test_loader, opt)
+    val_loss, predictions, metrics = evaluator.eval_story(model, crit, dataset, test_loader, opt)
+
+    
 def test(opt):
     logger = Logger(opt)
     dataset = VISTDataset(opt)
     opt.vocab_size = dataset.get_vocab_size()
     opt.seq_length = dataset.get_story_length()
-
+    
     dataset.test()
     test_loader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.workers)
     evaluator = Evaluator(opt, 'test')
     model = models.setup(opt)
     model.cuda()
+    
     predictions, metrics = evaluator.test_story(model, dataset, test_loader, opt)
-
-
+    
+    
+def eval_train(opt):
+    logger = Logger(opt)
+    dataset = VISTDataset(opt)
+    opt.vocab_size = dataset.get_vocab_size()
+    opt.seq_length = dataset.get_story_length()
+    
+    dataset.test()
+    test_loader = DataLoader(dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.workers)
+    evaluator = Evaluator(opt, 'eval_train')
+    model = models.setup(opt)
+    model.cuda()
+    
+    predictions, metrics = evaluator.test_story(model, dataset, test_loader, opt)
+    
+    
+    
 if __name__ == "__main__":
     opt = opts.parse_opt()
-
+    
+    print ('use_IN_feat', opt.use_IN_feat)
+    print ('use_prd_feat', opt.use_prd_feat)
+    print ('use_graph_emb', opt.use_graph_emb)
+    print ('use_det', opt.use_det)
+    
     if opt.option == 'train':
         print('Begin training:')
         train(opt)
-    else:
-        print('Begin testing:')
+    elif opt.option == 'val':
+        print('Begin validating:')
+        val(opt)
+    elif opt.option == 'eval_train':
+        print('Begin eval_train:')
+        eval_train(opt)
+    else: 
+        print('Begin test:')
         test(opt)
