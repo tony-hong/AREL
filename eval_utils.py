@@ -23,6 +23,7 @@ from torch.autograd import Variable
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import misc.utils as utils
+from tqdm import tqdm
 
 
 class CocoResFormat:
@@ -74,10 +75,13 @@ class Evaluator:
             ref_json_path = "data/reference/{}_reference.json".format(mode)
         else:
             ref_json_path = "data/reference/{}_desc_reference.json".format(mode)
+            
         self.reference = json.load(open(ref_json_path))
         print("loading file {}".format(ref_json_path))
         self.save_dir = os.path.join(opt.checkpoint_path, opt.id)
         self.prediction_file = os.path.join(self.save_dir, 'prediction_{}'.format(mode))
+        self.output_dict_file = os.path.join(self.save_dir, 'output_dict_{}'.format(mode))
+        self.output_raw_file = os.path.join(self.save_dir, 'output_raw_{}'.format(mode))
         self.eval = AlbumEvaluator()
 
     def measure(self):
@@ -103,14 +107,18 @@ class Evaluator:
         loss_sum = 0
         loss_evals = 0
         predictions = {}
-
+        output_dict = {}
+        output_list = []
+        
         prediction_txt = open(self.prediction_file, 'w')  # open the file to store the predictions
-
+        
         count = 0
-        for iter, batch in enumerate(loader):
+        for iter, batch in enumerate(tqdm(loader)):
             iter_start = time.time()
 
             feature_fc = Variable(batch['feature_fc'], volatile=True).cuda()
+            feature_det = Variable(batch['feature_det'], volatile=True).cuda() if 'feature_det' in batch else None
+            
             target = Variable(batch['split_story'], volatile=True).cuda()
             conv_feature = Variable(batch['feature_conv'], volatile=True).cuda() if 'feature_conv' in batch else None
 
@@ -126,6 +134,8 @@ class Evaluator:
             else:
                 if conv_feature is not None:
                     output = model(feature_fc, target, conv_feature)
+                elif feature_det is not None:
+                    output = model((feature_fc, feature_det), target)
                 else:
                     output = model(feature_fc, target)
 
@@ -142,27 +152,39 @@ class Evaluator:
             else:
                 if conv_feature is not None:
                     results, _ = model.predict(feature_fc, conv_feature, beam_size=opt.beam_size)
+                elif feature_det is not None:
+                    results, _ = model.predict((feature_fc, feature_det), beam_size=opt.beam_size)
                 else:
                     results, _ = model.predict(feature_fc, beam_size=opt.beam_size)
             stories = utils.decode_story(dataset.get_vocab(), results)
 
             indexes = batch['index'].numpy()
             for j, story in enumerate(stories):
-                vid, _ = dataset.get_id(indexes[j])
-                if vid not in predictions:  # only predict one story for an album
+                story_id, album_id, image_id = dataset.get_all_id(indexes[j])
+                if album_id not in predictions:  # only predict one story for an album
                     # write into txt file for evaluate metrics like Cider
-                    prediction_txt.write('{}\t {}\n'.format(vid, story))
+                    prediction_txt.write('{}\t {}\n'.format(album_id, story))
                     # save into predictions
-                    predictions[vid] = story
-
+                    predictions[album_id] = story
+                    output_dict[story_id] = story
+                    output_list.append((story_id, story))
+            '''
             logging.info("Evaluate iter {}/{}  {:04.2f}%. Time used: {}".format(iter,
                                                                                 len(loader),
                                                                                 iter * 100.0 / len(loader),
                                                                                 time.time() - iter_start))
-
+            '''
+            
         prediction_txt.close()
         metrics = self.measure()  # compute all the language metrics
-
+        
+        with open(self.output_dict_file, 'w') as f:
+            json.dump(output_dict, f)
+        
+        with open(self.output_raw_file, 'w') as f:
+            for story_id, story in output_list:
+                result = '\t'.join([story_id, story])
+        
         # Switch back to training mode
         model.train()
         dataset.train()
@@ -177,14 +199,19 @@ class Evaluator:
 
         predictions = {}
         prediction_txt = open(self.prediction_file, 'w')  # open the file to store the predictions
-
-        for iter, batch in enumerate(loader):
+        output_dict = {}
+        output_list = []
+        
+        for iter, batch in enumerate(tqdm(loader)):
             iter_start = time.time()
 
             feature_fc = Variable(batch['feature_fc'], volatile=True).cuda()
+            feature_det = Variable(batch['feature_det'], volatile=True).cuda() if 'feature_det' in batch else None            
             feature_conv = Variable(batch['feature_conv'], volatile=True).cuda() if 'feature_conv' in batch else None
             if feature_conv is not None:
                 results, _ = model.predict(feature_fc, feature_conv, beam_size=opt.beam_size)
+            elif feature_det is not None:
+                results, _ = model.predict((feature_fc, feature_det), beam_size=opt.beam_size)
             else:
                 results, _ = model.predict(feature_fc, beam_size=opt.beam_size)
 
@@ -192,21 +219,31 @@ class Evaluator:
 
             indexes = batch['index'].numpy()
             for j, story in enumerate(sents):
-                vid, _ = dataset.get_id(indexes[j])
-                if vid not in predictions:  # only predict one story for an album
+                story_id, album_id, image_id = dataset.get_all_id(indexes[j])
+                if album_id not in predictions:  # only predict one story for an album
                     # write into txt file for evaluate metrics like Cider
-                    prediction_txt.write('{}\t {}\n'.format(vid, story))
+                    prediction_txt.write('{}\t {}\n'.format(album_id, story))
                     # save into predictions
-                    predictions[vid] = story
-
+                    predictions[album_id] = story
+                    output_dict[story_id] = story
+                    output_list.append((story_id, story))
+            '''
             print("Evaluate iter {}/{}  {:04.2f}%. Time used: {}".format(iter,
                                                                          len(loader),
                                                                          iter * 100.0 / len(loader),
                                                                          time.time() - iter_start))
-
+            '''
+            
         prediction_txt.close()
         metrics = self.measure()  # compute all the language metrics
 
+        with open(self.output_dict_file, 'w') as f:
+            json.dump(output_dict, f)
+        
+        with open(self.output_raw_file, 'w') as f:
+            for story_id, story in output_list:
+                result = '\t'.join([story_id, story])
+                
         json.dump(metrics, open(os.path.join(self.save_dir, 'test_scores.json'), 'w'))
         # Switch back to training mode
         print("Test finished. Time used: {}".format(time.time() - start))
@@ -229,6 +266,7 @@ class Evaluator:
             iter_start = time.time()
 
             feature_fc = Variable(batch['feature_fc'], volatile=True).cuda()
+            feature_det = Variable(batch['feature_det'], volatile=True).cuda() if 'feature_det' in batch else None
             conv_feature = Variable(batch['feature_conv'], volatile=True).cuda() if 'feature_conv' in batch else None
             count += feature_fc.size(0)
             if conv_feature is not None:
@@ -239,7 +277,7 @@ class Evaluator:
 
             indexes = batch['index'].numpy()
             for j, story in enumerate(stories):
-                album_id, flickr_id = dataset.get_all_id(indexes[j])
+                _, album_id, flickr_id = dataset.get_all_id(indexes[j])
                 concat_flickr_id = "-".join(flickr_id)
                 if concat_flickr_id not in finished_flickr_ids:
                     # if vid not in predictions:  # only predict one story for an album
@@ -254,7 +292,11 @@ class Evaluator:
                                                                                 len(loader),
                                                                                 iter * 100.0 / len(loader),
                                                                                 time.time() - iter_start))
-
+        
+            # debug
+            if iter >= 5:
+                break
+            
         prediction_txt.close()
         json_prediction_file = os.path.join(self.save_dir, 'challenge.json')
         with open(json_prediction_file, 'w') as f:
